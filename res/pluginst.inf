@@ -1,0 +1,7 @@
+[plugininstall]
+description=Plugin for browsing and extracting MS Installer files
+
+type=wcx
+file=msi.wcx
+defaultdir=msi
+defaultextension=msi
