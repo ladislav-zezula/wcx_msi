@@ -4,7 +4,6 @@ This plugin can be installed into Total Commander. It allows to view MSI archive
 ### Build Requirements
 To build the MSI plugin, you need to have one of these build environments
 * Visual Studio 202x
-* Visual Studio 2008
 * WDK 6001
 Also, the following tool is needed to be in your PATH:
 * zip.exe (https://sourceforge.net/projects/infozip/files/)
