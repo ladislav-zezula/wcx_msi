@@ -192,6 +192,32 @@ TMsiFile * TMsiDatabase::ReleaseLastFile(TMsiFile * pMsiFile)
     return pMsiFile;
 }
 
+TMsiFile * TMsiDatabase::FindReferencedFile(TMsiTable * pMsiTable, LPCTSTR szStreamName, LPTSTR szFileName, size_t ccFileName)
+{
+    TMsiFile * pRefFile = NULL;
+    LPCTSTR szDot;
+    TCHAR szRefFile[MAX_PATH];
+
+    // References to other files are only in the "_Streams" table
+    if(pMsiTable->m_bIsStreamsTable)
+    {
+        // There must be dot in the name, like "Binary.bannrbmp"
+        if((szDot = _tcschr(szStreamName, _T('.'))) != NULL)
+        {
+            // Create the referenced file name
+            StringCchCopy(szRefFile, _countof(szRefFile), szStreamName);
+            szRefFile[szDot - szStreamName] = _T('\\');
+
+            // Is it in the database?
+            if((pRefFile = IsFilePresent(szRefFile)) != NULL)
+            {
+                StringCchPrintf(szFileName, ccFileName, _T("%s\\%s"), pMsiTable->Name(), szDot + 1);
+            }
+        }
+    }
+    return pRefFile;
+}
+
 void TMsiDatabase::UnlockAndRelease()
 {
     LeaveCriticalSection(&m_Lock);
@@ -251,11 +277,10 @@ DWORD TMsiDatabase::LoadTableNames()
     std::tstring strTableName;
     MSIHANDLE hMsiRecord = NULL;
     MSIHANDLE hMsiView = NULL;
-    LPCTSTR szQuery = _T("SELECT * from _Validation");
     DWORD dwErrCode;
 
     // The "_Validation" table contain list of all tables in the MSI
-    if((dwErrCode = MsiDatabaseOpenView(m_hMsiDb, szQuery, &hMsiView)) == ERROR_SUCCESS)
+    if((dwErrCode = MsiDatabaseOpenView(m_hMsiDb, _T("SELECT * from _Validation"), &hMsiView)) == ERROR_SUCCESS)
     {
         // Execute the query
         if((dwErrCode = MsiViewExecute(hMsiView, NULL)) == ERROR_SUCCESS)
@@ -278,6 +303,16 @@ DWORD TMsiDatabase::LoadTableNames()
         }
         MsiCloseHandle(hMsiView);
     }
+
+    // Check whether there is a "_Streams" table
+    if((dwErrCode = MsiDatabaseOpenView(m_hMsiDb, _T("SELECT * from _Streams"), &hMsiView)) == ERROR_SUCCESS)
+    {
+        // Insert the table to the table list
+        if(!FindStringInList(m_TableNames, _T("_Streams")))
+            m_TableNames.push_back(_T("_Streams"));
+        MsiCloseHandle(hMsiView);
+    }
+
     return m_TableNames.size() ? ERROR_SUCCESS : ERROR_NO_MORE_ITEMS;
 }
 

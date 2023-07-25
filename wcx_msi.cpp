@@ -228,14 +228,16 @@ int WINAPI ProcessFileW(HANDLE hArchive, PROCESS_FILE_OPERATION nOperation, LPCW
                     // Populate the cach with complete file data
                     if(pMsiFile->LoadFileData() == ERROR_SUCCESS)
                     {
+                        const MSI_BLOB & FileData = pMsiFile->FileData();
+
                         // Tell Total Commader what we are doing
                         while(CallProcessDataProc(szFullPath, dwFileOffset))
                         {
                             DWORD dwBytesToWrite = 0x1000;
 
                             // Get the size of remaining data
-                            if((dwFileOffset + dwBytesToWrite) > pMsiFile->m_Data.cbData)
-                                dwBytesToWrite = pMsiFile->m_Data.cbData - dwFileOffset;
+                            if((dwFileOffset + dwBytesToWrite) > FileData.cbData)
+                                dwBytesToWrite = FileData.cbData - dwFileOffset;
 
                             // Are we done?
                             if(dwBytesToWrite == 0)
@@ -245,7 +247,7 @@ int WINAPI ProcessFileW(HANDLE hArchive, PROCESS_FILE_OPERATION nOperation, LPCW
                             }
 
                             // Write the target file
-                            if(!WriteFile(hLocFile, pMsiFile->m_Data.pbData + dwFileOffset, dwBytesToWrite, &dwBytesWritten, NULL))
+                            if(!WriteFile(hLocFile, FileData.pbData + dwFileOffset, dwBytesToWrite, &dwBytesWritten, NULL))
                             {
                                 nResult = E_EWRITE;
                                 break;
@@ -295,8 +297,8 @@ static void StoreFoundFile(TMsiFile * pMsiFile, HDR * pHeaderData, DOS_FTIME & f
     pHeaderData->FileTime = fileTime;
 
     // TODO: Store the file sizes
-    pHeaderData->PackSize = pMsiFile->m_dwFileSize;
-    pHeaderData->UnpSize = pMsiFile->m_dwFileSize;
+    pHeaderData->PackSize = pMsiFile->FileSize();
+    pHeaderData->UnpSize = pMsiFile->FileSize();
 
     // Store file attributes
     pHeaderData->FileAttr = FILE_ATTRIBUTE_ARCHIVE;

@@ -68,7 +68,12 @@ TMsiTable::TMsiTable(TMsiDatabase * pMsiDb, const std::tstring & strName, MSIHAN
     m_hMsiView = hMsiView;
     m_nStreamColumn = INVALID_SIZE_T;
     m_nNameColumn = INVALID_SIZE_T;
+    m_bIsStreamsTable = FALSE;
     m_dwRefs = 1;
+
+    // Check for the "_Streams" table
+    if(strName == _T("_Streams"))
+        m_bIsStreamsTable = TRUE;
 
     // Reference the MSI database
     if((m_pMsiDb = pMsiDb) != NULL)

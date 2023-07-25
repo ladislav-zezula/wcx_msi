@@ -280,6 +280,7 @@ struct TMsiTable
     MSIHANDLE m_hMsiView;                   // MSI handle to the database view
     size_t m_nStreamColumn;                 // Index of the stream column. -1 if none
     size_t m_nNameColumn;                   // Index of the name column. -1 if none
+    DWORD m_bIsStreamsTable;                // TRUE if this is the "_Streams" table
     DWORD m_dwRefs;
 };
 
@@ -298,10 +299,19 @@ struct TMsiFile
     DWORD LoadFileSize();
     DWORD LoadFileData();
 
-    LPCTSTR Name()      { return m_strName.c_str(); }
+    void MakeItemNameFileSafe(std::tstring & strItemName);
+
+    const MSI_BLOB & FileData();
+    DWORD FileSize();
+    LPCTSTR Name();
+
+    protected:
+
+    friend struct TMsiDatabase;
 
     LIST_ENTRY m_Entry;                     // Link to other files
     TMsiTable * m_pMsiTable;                // Pointer to the database table
+    TMsiFile * m_pRefFile;                  // Reference to another file
     std::tstring m_strName;                 // File name
     MSIHANDLE m_hMsiRecord;                 // Handle to the MSI record (if binary file)
     MSI_BLOB m_Data;
@@ -324,6 +334,7 @@ struct TMsiDatabase
 
     TMsiFile * GetNextFile();
     TMsiFile * ReleaseLastFile(TMsiFile * pMsiFile = NULL);
+    TMsiFile * FindReferencedFile(TMsiTable * pMsiTable, LPCTSTR szStreamName, LPTSTR szFileName, size_t ccFileName);
 
     DWORD LoadTableNames();
     DWORD LoadTables();

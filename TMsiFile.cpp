@@ -76,6 +76,9 @@ TMsiFile::TMsiFile(TMsiTable * pMsiTable)
     m_dwFileSize = 0;
     m_dwRefs = 1;
 
+    // Reset the referenced file
+    m_pRefFile = NULL;
+
     // Reference the MSI table
     if((m_pMsiTable = pMsiTable) != NULL)
     {
@@ -87,6 +90,11 @@ TMsiFile::~TMsiFile()
 {
     // Sanity check
     assert(m_dwRefs == 0);
+    
+    // Dereference the referenced file
+    if(m_pRefFile != NULL)
+        m_pRefFile->Release();
+    m_pRefFile = NULL;
 
     // Dereference the database table
     if(m_pMsiTable != NULL)
@@ -114,6 +122,7 @@ DWORD TMsiFile::Release()
 
 DWORD TMsiFile::SetBinaryFile(TMsiDatabase * pMsiDb, MSIHANDLE hMsiRecord)
 {
+    TMsiFile * pRefFile;
     std::tstring strItemName;
     LPTSTR szExtension;
     DWORD dwNameIndex = 1;
@@ -124,6 +133,18 @@ DWORD TMsiFile::SetBinaryFile(TMsiDatabase * pMsiDb, MSIHANDLE hMsiRecord)
     // Retrieve the name of the item
     if(MsiRecordGetString(hMsiRecord, (UINT)(m_pMsiTable->m_nNameColumn), strItemName))
     {
+        // Is this just a reference to another file?
+        pRefFile = pMsiDb->FindReferencedFile(m_pMsiTable, strItemName.c_str(), szFileName, _countof(szFileName));
+        if((m_pRefFile = pRefFile) != NULL)
+        {
+            m_strName.assign(szFileName);
+            m_pRefFile->AddRef();
+            return ERROR_SUCCESS;
+        }
+
+        // Fix the item name to be file-safe
+        MakeItemNameFileSafe(strItemName);
+
         // Split the base name and extension
         StringCchPrintf(szBaseName, _countof(szBaseName), strItemName.c_str());
         if((szExtension = GetFileExtension(szBaseName)) > szBaseName)
@@ -232,6 +253,10 @@ DWORD TMsiFile::LoadCsvFileData(LPDWORD PtrFileSize)
 
 DWORD TMsiFile::LoadFileSize()
 {
+    // Is there a referenced file?
+    if(m_pRefFile != NULL)
+        return m_pRefFile->LoadFileSize();
+
     // Is there a MSI record with the stream? 
     if(m_hMsiRecord != NULL)
     {
@@ -247,6 +272,10 @@ DWORD TMsiFile::LoadFileSize()
 DWORD TMsiFile::LoadFileData()
 {
     DWORD dwErrCode = ERROR_SUCCESS;
+
+    // Is there a referenced file?
+    if(m_pRefFile != NULL)
+        return m_pRefFile->LoadFileData();
 
     // Are the data already there?
     if(m_Data.cbData < m_dwFileSize)
@@ -266,4 +295,30 @@ DWORD TMsiFile::LoadFileData()
     }
 
     return dwErrCode;
+}
+
+void TMsiFile::MakeItemNameFileSafe(std::tstring & strItemName)
+{
+    for(size_t i = 0; i < strItemName.size(); i++)
+    {
+        if(0 <= strItemName[i] && strItemName[i] < 0x20)
+        {
+            strItemName[i] = _T('_');
+        }
+    }
+}
+
+const MSI_BLOB & TMsiFile::FileData()
+{
+    return m_pRefFile ? m_pRefFile->FileData() : m_Data;
+}
+
+DWORD TMsiFile::FileSize()
+{
+    return m_pRefFile ? m_pRefFile->FileSize() : m_dwFileSize;
+}
+
+LPCTSTR TMsiFile::Name()
+{
+    return m_strName.c_str();
 }
