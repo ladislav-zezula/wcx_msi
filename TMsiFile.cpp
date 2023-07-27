@@ -100,6 +100,11 @@ TMsiFile::~TMsiFile()
     if(m_pMsiTable != NULL)
         m_pMsiTable->Release();
     m_pMsiTable = NULL;
+
+    // Close the MSI record handle
+    if(m_hMsiRecord != NULL)
+        MSI_CLOSE_HANDLE(m_hMsiRecord);
+    m_hMsiRecord = NULL;
 }
 
 //-----------------------------------------------------------------------------
@@ -135,31 +140,34 @@ DWORD TMsiFile::SetBinaryFile(TMsiDatabase * pMsiDb, MSIHANDLE hMsiRecord)
     {
         // Is this just a reference to another file?
         pRefFile = pMsiDb->FindReferencedFile(m_pMsiTable, strItemName.c_str(), szFileName, _countof(szFileName));
-        if((m_pRefFile = pRefFile) != NULL)
+        if((m_pRefFile = pRefFile) == NULL)
         {
-            m_strName.assign(szFileName);
+            // Fix the item name to be file-safe
+            MakeItemNameFileSafe(strItemName);
+
+            // Split the base name and extension
+            StringCchPrintf(szBaseName, _countof(szBaseName), strItemName.c_str());
+            if((szExtension = GetFileExtension(szBaseName)) > szBaseName)
+            {
+                StringCchCopy(szFileExt, _countof(szFileExt), szExtension);
+                szExtension[0] = 0;
+            }
+
+            // Construct the unique file name
+            StringCchPrintf(szFileName, _countof(szFileName), _T("%s\\%s%s"), m_pMsiTable->Name(), szBaseName, szFileExt);
+            while(pMsiDb->IsFilePresent(szFileName))
+            {
+                StringCchPrintf(szFileName, _countof(szFileName), _T("%s\\%s_%03u%s"), m_pMsiTable->Name(), szBaseName, dwNameIndex++, szFileExt);
+            }
+        }
+        else
+        {
+            // Reference the file only
             m_pRefFile->AddRef();
-            return ERROR_SUCCESS;
         }
 
-        // Fix the item name to be file-safe
-        MakeItemNameFileSafe(strItemName);
-
-        // Split the base name and extension
-        StringCchPrintf(szBaseName, _countof(szBaseName), strItemName.c_str());
-        if((szExtension = GetFileExtension(szBaseName)) > szBaseName)
-        {
-            StringCchCopy(szFileExt, _countof(szFileExt), szExtension);
-            szExtension[0] = 0;
-        }
-
-        // Construct the unique file name
-        StringCchPrintf(szFileName, _countof(szFileName), _T("%s\\%s%s"), m_pMsiTable->Name(), szBaseName, szFileExt);
-        while(pMsiDb->IsFilePresent(szFileName))
-            StringCchPrintf(szFileName, _countof(szFileName), _T("%s\\%s_%03u%s"), m_pMsiTable->Name(), szBaseName, dwNameIndex++, szFileExt);
+        // Assign the file name and record handle
         m_strName.assign(szFileName);
-
-        // Assign the record handle
         m_hMsiRecord = hMsiRecord;
         return ERROR_SUCCESS;
     }
@@ -212,6 +220,10 @@ DWORD TMsiFile::LoadCsvFileData(LPDWORD PtrFileSize)
         // Fetch all records
         while(MsiViewFetch(hMsiView, &hMsiRecord) == ERROR_SUCCESS)
         {
+            // Log the handle for diagnostics
+            MSI_LOG_OPEN_HANDLE(hMsiRecord);
+
+            // Dump all columns
             for(size_t i = 0; i < Columns.size(); i++)
             {
                 // Retrieve the buffer data
@@ -238,7 +250,7 @@ DWORD TMsiFile::LoadCsvFileData(LPDWORD PtrFileSize)
             pbBufferPtr = AppendNewLine(pbBufferPtr, pbBufferEnd);
 
             // Close the MSI record
-            MsiCloseHandle(hMsiRecord);
+            MSI_CLOSE_HANDLE(hMsiRecord);
         }
 
         // Finalize the executed view

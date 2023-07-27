@@ -19,12 +19,12 @@
 #include <windowsx.h>
 #include <commctrl.h>
 #include <strsafe.h>
-#include <msiquery.h>                           // MSI.dll functions
 
 #include <string>
 #include <vector>
 
 #include "utils.h"                              // Utility functions
+#include "TMsi.h"                               // MSI classes
 
 //-----------------------------------------------------------------------------
 // Defines
@@ -82,8 +82,6 @@ enum PROCESS_FILE_OPERATION
 #define MEMPACK_DONE        1                   // Function call finished OK, there is no more data
 
 #define INVALID_SIZE_T          (size_t)(-1)
-
-#define MSI_MAGIC_SIGNATURE  0x434947414D49534D // "MSIMAGIC"
 
 //-----------------------------------------------------------------------------
 // Definitions of callback functions
@@ -201,189 +199,6 @@ typedef struct
 } TPackDefaultParamStruct;
 
 //-----------------------------------------------------------------------------
-// Information about MSI database
-
-typedef std::vector<std::tstring> MSI_STRING_LIST;
-
-struct TMsiDatabase;
-
-typedef enum MSI_TYPE
-{
-    MsiTypeUnknown = 0,
-    MsiTypeInteger,
-    MsiTypeString,
-    MsiTypeStream,
-};
-
-struct MSI_BLOB
-{
-    MSI_BLOB()
-    {
-        pbData = NULL;
-        cbData = 0;
-    }
-
-    ~MSI_BLOB()
-    {
-        if(pbData != NULL)
-            HeapFree(g_hHeap, 0, pbData);
-        pbData = NULL;
-        cbData = 0;
-    }
-
-    DWORD Reserve(DWORD cbSize)
-    {
-        // Must not be allocated before
-        assert(pbData == NULL);
-
-        // Allocate zero-filled buffer
-        if((pbData = (LPBYTE)HeapAlloc(g_hHeap, HEAP_ZERO_MEMORY, cbSize)) == NULL)
-            return ERROR_NOT_ENOUGH_MEMORY;
-
-        cbData = cbSize;
-        return ERROR_SUCCESS;
-    }
-
-    LPBYTE pbData;
-    DWORD cbData;
-};
-
-struct TMsiColumn
-{
-    TMsiColumn(LPCTSTR szName, LPCTSTR szType);
-
-    std::tstring m_strName;                 // Name of the column as LPTSTR
-    std::tstring m_strType;                 // Type of the column as LPTSTR
-    MSI_TYPE m_Type;                        // Type of the column
-    size_t m_Size;                          // Length of the column, if it's string
-};
-
-struct TMsiTable
-{
-    TMsiTable(TMsiDatabase * pMsiDb, const std::tstring & strName, MSIHANDLE hMsiView);
-    ~TMsiTable();
-
-    DWORD AddRef();
-    DWORD Release();
-
-    DWORD Load();
-    DWORD LoadColumns();
-
-    const std::vector<TMsiColumn> & Columns()   { return m_Columns; }
-    MSIHANDLE MsiView()                         { return m_hMsiView; }
-    LPCTSTR Name()                              { return m_strName.c_str(); }
-
-    std::vector<TMsiColumn> m_Columns;      // List of columns
-    std::tstring m_strName;                 // Table name
-    TMsiDatabase * m_pMsiDb;                // Pointer to the parent database
-    LIST_ENTRY m_Entry;                     // Links to other tables
-    MSIHANDLE m_hMsiView;                   // MSI handle to the database view
-    size_t m_nStreamColumn;                 // Index of the stream column. -1 if none
-    size_t m_nNameColumn;                   // Index of the name column. -1 if none
-    DWORD m_bIsStreamsTable;                // TRUE if this is the "_Streams" table
-    DWORD m_dwRefs;
-};
-
-struct TMsiFile
-{
-    TMsiFile(TMsiTable * pMsiTable);
-    ~TMsiFile();
-
-    DWORD AddRef();
-    DWORD Release();
-
-    DWORD SetBinaryFile(TMsiDatabase * pMsiDb, MSIHANDLE hMsiRecord);
-    DWORD SetCsvFile(TMsiDatabase * pMsiDb);
-
-    DWORD LoadCsvFileData(LPDWORD PtrFileSize);
-    DWORD LoadFileSize();
-    DWORD LoadFileData();
-
-    void MakeItemNameFileSafe(std::tstring & strItemName);
-
-    const MSI_BLOB & FileData();
-    DWORD FileSize();
-    LPCTSTR Name();
-
-    protected:
-
-    friend struct TMsiDatabase;
-
-    LIST_ENTRY m_Entry;                     // Link to other files
-    TMsiTable * m_pMsiTable;                // Pointer to the database table
-    TMsiFile * m_pRefFile;                  // Reference to another file
-    std::tstring m_strName;                 // File name
-    MSIHANDLE m_hMsiRecord;                 // Handle to the MSI record (if binary file)
-    MSI_BLOB m_Data;
-    DWORD m_dwFileSize;                     // Size of the file
-    DWORD m_dwRefs;
-};
-
-// Our structure describing open archive
-struct TMsiDatabase
-{
-    TMsiDatabase(MSIHANDLE hMsiDb, FILETIME & ft);
-
-    static TMsiDatabase * FromHandle(HANDLE hHandle);
-
-    DWORD AddRef();
-    DWORD Release();
-    void  CloseAllFiles();
-    void  UnlockAndRelease();
-    void  AssertRefCount(DWORD dwRefs);
-
-    TMsiFile * GetNextFile();
-    TMsiFile * ReleaseLastFile(TMsiFile * pMsiFile = NULL);
-    TMsiFile * FindReferencedFile(TMsiTable * pMsiTable, LPCTSTR szStreamName, LPTSTR szFileName, size_t ccFileName);
-
-    DWORD LoadTableNames();
-    DWORD LoadTables();
-    DWORD LoadFiles();
-    DWORD LoadMultipleStreamFiles(TMsiTable * pMsiTable);
-    DWORD LoadSimpleCsvFile(TMsiTable * pMsiTable);
-    
-    TMsiFile * IsFilePresent(LPCTSTR szFileName);
-    TMsiFile * LastFile();
-    const FILETIME & FileTime()         { return m_FileTime; }
-
-    protected:
-
-    ~TMsiDatabase();
-    
-    template <typename LIST_ITEM>
-    void DeleteLinkedList(LIST_ENTRY & Links)
-    {
-        PLIST_ENTRY pHeadEntry = &Links;
-        PLIST_ENTRY pListEntry;
-        LIST_ITEM * pMsiItem;
-
-        for(pListEntry = pHeadEntry->Flink; pListEntry != pHeadEntry; )
-        {
-            // Get the TMsiTable out of it and move the pointer
-            pMsiItem = CONTAINING_RECORD(pListEntry, LIST_ITEM, m_Entry);
-            pListEntry = pListEntry->Flink;
-
-            // Unlin and free the class
-            RemoveEntryList(&pMsiItem->m_Entry);
-            pMsiItem->Release();
-        }
-    }
-
-    CRITICAL_SECTION m_Lock;
-    MSI_STRING_LIST m_TableNames;
-    PLIST_ENTRY m_pFileEntry;
-    TMsiFile * m_pLastFile;                 // The last file found by ReadHeaders
-    LIST_ENTRY m_Tables;                    // List of tables
-    LIST_ENTRY m_Files;                     // List of files
-    ULONGLONG m_MagicSignature;             // MSI_MAGIC_SIGNATURE
-    MSIHANDLE m_hMsiDb;
-    FILETIME m_FileTime;                    // File time of the MSI archive
-    DWORD m_dwTables;                       // Number of tables
-    DWORD m_dwFiles;                        // Number of files
-    DWORD m_dwRefs;
-};
-
-//-----------------------------------------------------------------------------
 // Configuration structures
 
 struct TConfiguration
@@ -398,13 +213,6 @@ extern TConfiguration g_cfg;                // Plugin configuration
 extern HINSTANCE g_hInst;                   // Our DLL instance
 extern HANDLE g_hHeap;                      // Process heap
 extern TCHAR g_szIniFile[MAX_PATH];         // Packer INI file
-
-//-----------------------------------------------------------------------------
-// MSI helper functions
-
-bool MsiRecordGetInteger(MSIHANDLE hMsiRecord, UINT nColumn, std::tstring & strValue);
-bool MsiRecordGetString(MSIHANDLE hMsiRecord, UINT nColumn, std::tstring & strValue);
-bool MsiRecordGetBinary(MSIHANDLE hMsiRecord, UINT nColumn, MSI_BLOB & binValue);
 
 //-----------------------------------------------------------------------------
 // Global functions

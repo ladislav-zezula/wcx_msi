@@ -94,7 +94,7 @@ TMsiTable::~TMsiTable()
 
     // Close the view handle
     if(m_hMsiView != NULL)
-        MsiCloseHandle(m_hMsiView);
+        MSI_CLOSE_HANDLE(m_hMsiView);
     m_hMsiView = NULL;
 }
 
@@ -157,11 +157,18 @@ DWORD TMsiTable::LoadColumns()
     UINT uColumns1 = 0;
     UINT uColumns2 = 0;
 
-    // Retrieve types and names
+    // Retrieve types
     if((dwErrCode = MsiViewGetColumnInfo(m_hMsiView, MSICOLINFO_TYPES, &hMsiColTypes)) == ERROR_SUCCESS)
     {
+        // Log the handle for diagnostics
+        MSI_LOG_OPEN_HANDLE(hMsiColTypes);
+
+        // Retrieve names
         if((dwErrCode = MsiViewGetColumnInfo(m_hMsiView, MSICOLINFO_NAMES, &hMsiColNames)) == ERROR_SUCCESS)
         {
+            // Log the handle for diagnostics
+            MSI_LOG_OPEN_HANDLE(hMsiColNames);
+
             // Retrieve column counts
             uColumns1 = MsiRecordGetFieldCount(hMsiColTypes);
             uColumns2 = MsiRecordGetFieldCount(hMsiColNames);
@@ -184,9 +191,9 @@ DWORD TMsiTable::LoadColumns()
                     }
                 }
             }
-            MsiCloseHandle(hMsiColNames);
+            MSI_CLOSE_HANDLE(hMsiColNames);
         }
-        MsiCloseHandle(hMsiColTypes);
+        MSI_CLOSE_HANDLE(hMsiColTypes);
     }
     return dwErrCode;
 }

@@ -25,73 +25,6 @@ static bool FindStringInList(MSI_STRING_LIST & MsiTablesList, const std::tstring
     return false;
 }
 
-bool MsiRecordGetInteger(MSIHANDLE hMsiRecord, UINT nColumn, std::tstring & strValue)
-{
-    LPTSTR szEndString;
-    TCHAR szIntValue[32];
-    int nIntValue = MsiRecordGetInteger(hMsiRecord, nColumn + 1);
-
-    StringCchPrintfEx(szIntValue, _countof(szIntValue), &szEndString, NULL, 0, _T("%i"), nIntValue);
-    strValue.assign(szIntValue, (size_t)(szEndString - szIntValue));
-    return true;
-}
-
-bool MsiRecordGetString(MSIHANDLE hMsiRecord, UINT nColumn, std::tstring & strValue)
-{
-    #define STATIC_BUFFER_SIZE  0x80
-    DWORD ccValue = 0;
-
-    // Retrieve the length of the string without the ending EOS
-    if(MsiRecordGetString(hMsiRecord, nColumn + 1, NULL, &ccValue) == ERROR_SUCCESS)
-    {
-        // Include EOS in the buffer
-        ccValue++;
-
-        // Can we retrieve the value without allocating buffer?
-        if(ccValue > STATIC_BUFFER_SIZE)
-        {
-            LPTSTR szBuffer;
-
-            if((szBuffer = new TCHAR[ccValue]) != NULL)
-            {
-                MsiRecordGetString(hMsiRecord, nColumn + 1, szBuffer, &ccValue);
-                strValue.assign(szBuffer, ccValue);
-                delete[] szBuffer;
-                return true;
-            }
-        }
-        else
-        {
-            TCHAR szBuffer[STATIC_BUFFER_SIZE];
-
-            MsiRecordGetString(hMsiRecord, nColumn + 1, szBuffer, &ccValue);
-            strValue.assign(szBuffer, ccValue);
-            return true;
-        }
-    }
-    return false;
-}
-
-bool MsiRecordGetBinary(MSIHANDLE hMsiRecord, UINT nColumn, MSI_BLOB & binValue)
-{
-    LPBYTE pbValue = NULL;
-    DWORD cbValue = 0;
-
-    // Retrieve the length of the string
-    if((cbValue = MsiRecordDataSize(hMsiRecord, nColumn + 1)) > 0)
-    {
-        if((pbValue = new BYTE[cbValue]) != NULL)
-        {
-            MsiRecordReadStream(hMsiRecord, nColumn + 1, (char *)(pbValue), &cbValue);
-        }
-    }
-
-    // Give the result
-    binValue.pbData = pbValue;
-    binValue.cbData = cbValue;
-    return (binValue.pbData != NULL);
-}
-
 //-----------------------------------------------------------------------------
 // Constructor and destructor
 
@@ -114,12 +47,34 @@ TMsiDatabase::TMsiDatabase(MSIHANDLE hMsiDb, FILETIME & ft)
 
 TMsiDatabase::~TMsiDatabase()
 {
-    // Sanity check
-    assert(m_dwRefs == 0);
+#ifdef _DEBUG
+    UINT nHandleCount;
+
+    // Only one handle should be open now
+    if((nHandleCount = MSI_DUMP_HANDLES()) > 1)
+    {
+        Dbg(_T("Handle leak detected (%u handles)\n"), nHandleCount);
+        __debugbreak();
+    }
+
+    // Ask MSI.dll about unclosed handles
+    if((nHandleCount = MsiCloseAllHandles()) != 1)
+    {
+        Dbg(_T("Handle leak detected (%u handles)\n"), nHandleCount);
+        __debugbreak();
+    }
+
+    // Reference count check
+    if(m_dwRefs > 0)
+    {
+        Dbg(_T("Non-zero reference count detected (%u)\n"), m_dwRefs);
+        __debugbreak();
+    }
+#endif
 
     // Free the MSI handle
     if(m_hMsiDb != NULL)
-        MsiCloseHandle(m_hMsiDb);
+        MSI_CLOSE_HANDLE(m_hMsiDb);
     m_hMsiDb = NULL;
 
     // Delete the lock
@@ -224,12 +179,6 @@ void TMsiDatabase::UnlockAndRelease()
     Release();
 }
 
-void TMsiDatabase::AssertRefCount(DWORD dwRefs)
-{
-    UNREFERENCED_PARAMETER(dwRefs);
-    assert(m_dwRefs == dwRefs);
-}
-
 TMsiFile * TMsiDatabase::GetNextFile()
 {
     PLIST_ENTRY pHeadEntry = &m_Files;
@@ -282,12 +231,19 @@ DWORD TMsiDatabase::LoadTableNames()
     // The "_Validation" table contain list of all tables in the MSI
     if((dwErrCode = MsiDatabaseOpenView(m_hMsiDb, _T("SELECT * from _Validation"), &hMsiView)) == ERROR_SUCCESS)
     {
+        // Log the handle for diagnostics
+        MSI_LOG_OPEN_HANDLE(hMsiView);
+
         // Execute the query
         if((dwErrCode = MsiViewExecute(hMsiView, NULL)) == ERROR_SUCCESS)
         {
             // Dump all records
             while(MsiViewFetch(hMsiView, &hMsiRecord) == ERROR_SUCCESS)
             {
+                // Log the handle for diagnostics
+                MSI_LOG_OPEN_HANDLE(hMsiRecord);
+
+                // Retrieve the table name
                 if(MsiRecordGetString(hMsiRecord, 0, strTableName))
                 {
                     if(!FindStringInList(m_TableNames, strTableName))
@@ -295,22 +251,25 @@ DWORD TMsiDatabase::LoadTableNames()
                         m_TableNames.push_back(strTableName);
                     }
                 }
-                MsiCloseHandle(hMsiRecord);
+                MSI_CLOSE_HANDLE(hMsiRecord);
             }
             
             // Finalize the view
             MsiViewClose(hMsiView);
         }
-        MsiCloseHandle(hMsiView);
+        MSI_CLOSE_HANDLE(hMsiView);
     }
 
     // Check whether there is a "_Streams" table
     if((dwErrCode = MsiDatabaseOpenView(m_hMsiDb, _T("SELECT * from _Streams"), &hMsiView)) == ERROR_SUCCESS)
     {
+        // Log the handle for diagnostics
+        MSI_LOG_OPEN_HANDLE(hMsiView);
+
         // Insert the table to the table list
         if(!FindStringInList(m_TableNames, _T("_Streams")))
             m_TableNames.push_back(_T("_Streams"));
-        MsiCloseHandle(hMsiView);
+        MSI_CLOSE_HANDLE(hMsiView);
     }
 
     return m_TableNames.size() ? ERROR_SUCCESS : ERROR_NO_MORE_ITEMS;
@@ -332,6 +291,10 @@ DWORD TMsiDatabase::LoadTables()
         StringCchPrintf(szQuery, _countof(szQuery), _T("SELECT * FROM %s"), strTableName.c_str());
         if(MsiDatabaseOpenView(m_hMsiDb, szQuery, &hMsiView) == ERROR_SUCCESS)
         {
+            // Log the handle for diagnostics
+            MSI_LOG_OPEN_HANDLE(hMsiView);
+
+            // Create the TMsiTable object
             if((pMsiTable = new TMsiTable(this, strTableName, hMsiView)) != NULL)
             {
                 if(pMsiTable->Load() == ERROR_SUCCESS)
@@ -349,7 +312,7 @@ DWORD TMsiDatabase::LoadTables()
             else
             {
                 dwErrCode = ERROR_NOT_ENOUGH_MEMORY;
-                MsiCloseHandle(hMsiView);
+                MSI_CLOSE_HANDLE(hMsiView);
                 break;
             }
         }
@@ -394,6 +357,10 @@ DWORD TMsiDatabase::LoadMultipleStreamFiles(TMsiTable * pMsiTable)
         // Dump all records
         while(MsiViewFetch(hMsiView, &hMsiRecord) == ERROR_SUCCESS)
         {
+            // Log the handle for diagnostics
+            MSI_LOG_OPEN_HANDLE(hMsiRecord);
+
+            // Create the TMsiFile object
             if((pMsiFile = new TMsiFile(pMsiTable)) != NULL)
             {
                 if((dwErrCode = pMsiFile->SetBinaryFile(this, hMsiRecord)) == ERROR_SUCCESS)
@@ -403,6 +370,7 @@ DWORD TMsiDatabase::LoadMultipleStreamFiles(TMsiTable * pMsiTable)
                 }
                 else
                 {
+                    MSI_CLOSE_HANDLE(hMsiRecord);
                     pMsiFile->Release();
                 }
             }

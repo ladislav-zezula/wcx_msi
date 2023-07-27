@@ -35,7 +35,13 @@ BOOL WINAPI CanYouHandleThisFileW(LPCWSTR szFileName)
     // Just try to open the database. If it succeeds,
     // then we can handle this file
     if(MsiOpenDatabase(szFileName, MSIDBOPEN_READONLY, &hMsiDb) == ERROR_SUCCESS)
-        MsiCloseHandle(hMsiDb);
+    {
+        // Log the handle for diagnostics
+        MSI_LOG_OPEN_HANDLE(hMsiDb);
+
+        // Close the handle
+        MSI_CLOSE_HANDLE(hMsiDb);
+    }
     return (hMsiDb != NULL) ? TRUE : FALSE;
 }
 
@@ -87,6 +93,10 @@ static HANDLE OpenArchiveAW(TOpenArchiveData * pArchiveData, LPCWSTR szArchiveNa
                 // Attempt to open the MSI
                 if(MsiOpenDatabase(szArchiveName, MSIDBOPEN_READONLY, &hMsiDb) == ERROR_SUCCESS)
                 {
+                    // Log the handle for diagnostics
+                    MSI_LOG_OPEN_HANDLE(hMsiDb);
+
+                    // Create the TMsiDatabase object
                     if((pMsiDB = new TMsiDatabase(hMsiDb, wf.ftLastWriteTime)) != NULL)
                     {
                         pArchiveData->OpenResult = 0;
@@ -95,7 +105,7 @@ static HANDLE OpenArchiveAW(TOpenArchiveData * pArchiveData, LPCWSTR szArchiveNa
                     else
                     {
                         pArchiveData->OpenResult = E_NO_MEMORY;
-                        MsiCloseHandle(hMsiDb);
+                        MSI_CLOSE_HANDLE(hMsiDb);
                     }
                 }
                 FindClose(hFind);
@@ -131,7 +141,6 @@ int WINAPI CloseArchive(HANDLE hArchive)
         pMsiDb->UnlockAndRelease();
 
         // Finally release the database
-        pMsiDb->AssertRefCount(1);
         pMsiDb->Release();
     }
     return (pMsiDb != NULL) ? ERROR_SUCCESS : E_NOT_SUPPORTED;
