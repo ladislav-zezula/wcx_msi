@@ -199,32 +199,10 @@ typedef struct
 } TPackDefaultParamStruct;
 
 //-----------------------------------------------------------------------------
-// Configuration structures
-
-struct TConfiguration
-{
-    DWORD dwDummy;                          // Dummy
-};
-
-//-----------------------------------------------------------------------------
 // Global variables
 
-extern TConfiguration g_cfg;                // Plugin configuration
 extern HINSTANCE g_hInst;                   // Our DLL instance
 extern HANDLE g_hHeap;                      // Process heap
 extern TCHAR g_szIniFile[MAX_PATH];         // Packer INI file
-
-//-----------------------------------------------------------------------------
-// Global functions
-
-// Configuration functions
-int SetDefaultConfiguration();
-int LoadConfiguration();
-int SaveConfiguration();
-
-//-----------------------------------------------------------------------------
-// Dialogs
-
-INT_PTR SettingsDialog(HWND hParent);
 
 #endif // __WCX_MSI_H__

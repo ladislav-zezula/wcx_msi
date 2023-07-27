@@ -20,8 +20,7 @@ USR_LIB_PATH=..\aaa\lib64
 USR_LIB_PATH=..\aaa\lib32
 !endif
 
-SOURCES=Config.cpp       \
-        DllMain.cpp      \
+SOURCES=DllMain.cpp      \
         TMsi.cpp         \
         TMsiDatabase.cpp \
         TMsiTable.cpp    \

@@ -22,6 +22,7 @@ PFN_PROCESS_DATAA PfnProcessDataA;      // Process data procedure (ANSI)
 PFN_PROCESS_DATAW PfnProcessDataW;      // Process data procedure (UNICODE)
 PFN_CHANGE_VOLUMEA PfnChangeVolA;       // Change volume procedure (ANSI)
 PFN_CHANGE_VOLUMEW PfnChangeVolW;       // Change volume procedure (UNICODE)
+TCHAR g_szIniFile[MAX_PATH];
 
 //-----------------------------------------------------------------------------
 // CanYouHandleThisFile(W) allows the plugin to handle files with different
@@ -451,13 +452,13 @@ void WINAPI ConfigurePacker(HWND hParent, HINSTANCE hDllInstance)
 void WINAPI PackSetDefaultParams(TPackDefaultParamStruct * dps)
 {
     // Set default configuration.
-    SetDefaultConfiguration();
+    //SetDefaultConfiguration();
     g_szIniFile[0] = 0;
 
     // If INI file, load it from it too.
     if(dps != NULL && dps->DefaultIniName[0])
     {
         StringCchCopyX(g_szIniFile, _countof(g_szIniFile), dps->DefaultIniName);
-        LoadConfiguration();
+        //LoadConfiguration();
     }
 }
