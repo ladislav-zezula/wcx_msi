@@ -54,6 +54,9 @@ struct MSI_BLOB
         // Must not be allocated before
         assert(pbData == NULL);
 
+        // Make sure there's at least one byte allocated
+        cbSize = max(cbSize, 1);
+
         // Allocate zero-filled buffer
         if((pbData = (LPBYTE)HeapAlloc(g_hHeap, HEAP_ZERO_MEMORY, cbSize)) == NULL)
             return ERROR_NOT_ENOUGH_MEMORY;
@@ -110,11 +113,15 @@ struct TMsiFile
     DWORD AddRef();
     DWORD Release();
 
+    DWORD SetSummaryFile(TMsiDatabase * pMsiDb, MSIHANDLE hMsiSummary);
     DWORD SetBinaryFile(TMsiDatabase * pMsiDb, MSIHANDLE hMsiRecord);
     DWORD SetCsvFile(TMsiDatabase * pMsiDb);
 
-    DWORD LoadCsvFileData(LPDWORD PtrFileSize);
-    DWORD LoadFileSize();
+    DWORD LoadSummaryFile(LPDWORD PtrFileSize);
+    DWORD LoadBinaryFile(LPDWORD PtrFileSize);
+    DWORD LoadCsvFile(LPDWORD PtrFileSize);
+    
+    DWORD LoadFileInternal(LPDWORD PtrFileSize);
     DWORD LoadFileData();
 
     void MakeItemNameFileSafe(std::tstring & strItemName);
@@ -123,7 +130,17 @@ struct TMsiFile
     DWORD FileSize();
     LPCTSTR Name();
 
+    enum MSI_FT
+    {
+        MsiFileNone = 0,            // Unknown / not specified
+        MsiFileSummary,             // A summary file
+        MsiFileBinary,              // A binary file
+        MsiFileTable                // A MSI table file
+    };
+
     protected:
+
+    DWORD SetUniqueFileName(TMsiDatabase * pMsiDb, LPCTSTR szFolderName, LPCTSTR szBaseName, LPCTSTR szExtension);
 
     friend struct TMsiDatabase;
 
@@ -131,8 +148,9 @@ struct TMsiFile
     TMsiTable * m_pMsiTable;                // Pointer to the database table
     TMsiFile * m_pRefFile;                  // Reference to another file
     std::tstring m_strName;                 // File name
-    MSIHANDLE m_hMsiRecord;                 // Handle to the MSI record (if binary file)
+    MSIHANDLE m_hMsiHandle;                 // Handle to the MSI record (if binary file) or MSI summary (if summary file)
     MSI_BLOB m_Data;
+    MSI_FT m_FileType;
     DWORD m_dwFileSize;                     // Size of the file
     DWORD m_dwRefs;
 };
@@ -153,12 +171,14 @@ struct TMsiDatabase
     TMsiFile * ReleaseLastFile(TMsiFile * pMsiFile = NULL);
     TMsiFile * FindReferencedFile(TMsiTable * pMsiTable, LPCTSTR szStreamName, LPTSTR szFileName, size_t ccFileName);
 
+    DWORD LoadTableNameIfExists(LPCTSTR szTableName);
     DWORD LoadTableNames();
     DWORD LoadTables();
     DWORD LoadFiles();
     DWORD LoadMultipleStreamFiles(TMsiTable * pMsiTable);
     DWORD LoadSimpleCsvFile(TMsiTable * pMsiTable);
-    
+    DWORD LoadSummaryFile(MSIHANDLE hMsiSummary);
+
     TMsiFile * IsFilePresent(LPCTSTR szFileName);
     TMsiFile * LastFile();
     const FILETIME & FileTime()         { return m_FileTime; }

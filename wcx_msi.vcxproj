@@ -339,7 +339,6 @@
     <ResourceCompile Include="wcx_msi.rc" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\Aaa\inc\StormLib.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="TMsi.h" />
     <ClInclude Include="wcx_msi.h" />

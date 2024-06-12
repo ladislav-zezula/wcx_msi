@@ -2,7 +2,7 @@
 This plugin can be installed into Total Commander. It allows to view MSI archives as if they were a ZIP file.
 
 Because MSI files are databases, the plugin turns them into virtual files.
- * If a database table contains rows with a stream, this database is shown as a folder (named after the table) and each row is a single file in that folder.
+ * If a database table contains rows with a stream, it is shown as a folder (named after the table) and each row is a single file in that folder.
  * Otherwise, the database table is shown as a virtual UTF8-encoded CSV file.
 
 ### Build Requirements

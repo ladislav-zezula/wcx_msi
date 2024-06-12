@@ -97,8 +97,15 @@ bool MsiRecordGetInteger(MSIHANDLE hMsiRecord, UINT nColumn, std::tstring & strV
     TCHAR szIntValue[32];
     int nIntValue = MsiRecordGetInteger(hMsiRecord, nColumn + 1);
 
-    StringCchPrintfEx(szIntValue, _countof(szIntValue), &szEndString, NULL, 0, _T("%i"), nIntValue);
-    strValue.assign(szIntValue, (size_t)(szEndString - szIntValue));
+    if((nIntValue = MsiRecordGetInteger(hMsiRecord, nColumn + 1)) != MSI_NULL_INTEGER)
+    {
+        StringCchPrintfEx(szIntValue, _countof(szIntValue), &szEndString, NULL, 0, _T("%i"), nIntValue);
+        strValue.assign(szIntValue, (size_t)(szEndString - szIntValue));
+    }
+    else
+    {
+        strValue.assign(_T("(null)"), 6);
+    }
     return true;
 }
 

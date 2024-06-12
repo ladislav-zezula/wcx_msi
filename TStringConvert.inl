@@ -1,7 +1,7 @@
 /*****************************************************************************/
-/* StormLibT.inl                          Copyright (c) Ladislav Zezula 2023 */
+/* TStringConvert.inl                     Copyright (c) Ladislav Zezula 2023 */
 /*---------------------------------------------------------------------------*/
-/* Unicode layer for StormLib functions                                      */
+/* Unicode layer for Total Commander plugin                                  */
 /*---------------------------------------------------------------------------*/
 /*   Date    Ver   Who  Comment                                              */
 /* --------  ----  ---  -------                                              */

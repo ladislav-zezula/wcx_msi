@@ -212,13 +212,35 @@ TMsiFile * TMsiDatabase::GetNextFile()
         m_pFileEntry = m_pFileEntry->Flink;
 
         // Make sure that we have the file size
-        pMsiFile->LoadFileSize();
+        pMsiFile->LoadFileInternal(NULL);
         pMsiFile->AddRef();
 
         // Set the new last file
         return ReleaseLastFile(pMsiFile);
     }
     return NULL;
+}
+
+DWORD TMsiDatabase::LoadTableNameIfExists(LPCTSTR szTableName)
+{
+    MSIHANDLE hMsiView = NULL;
+    DWORD dwErrCode;
+    TCHAR szQuery[256];
+
+    StringCchPrintf(szQuery, _countof(szQuery), _T("SELECT * from %s"), szTableName);
+    if((dwErrCode = MsiDatabaseOpenView(m_hMsiDb, szQuery, &hMsiView)) == ERROR_SUCCESS)
+    {
+        // Log the handle for diagnostics
+        MSI_LOG_OPEN_HANDLE(hMsiView);
+
+        // Insert the table to the table list
+        if(!FindStringInList(m_TableNames, szTableName))
+        {
+            m_TableNames.push_back(szTableName);
+        }
+        MSI_CLOSE_HANDLE(hMsiView);
+    }
+    return dwErrCode;
 }
 
 DWORD TMsiDatabase::LoadTableNames()
@@ -260,18 +282,11 @@ DWORD TMsiDatabase::LoadTableNames()
         MSI_CLOSE_HANDLE(hMsiView);
     }
 
-    // Check whether there is a "_Streams" table
-    if((dwErrCode = MsiDatabaseOpenView(m_hMsiDb, _T("SELECT * from _Streams"), &hMsiView)) == ERROR_SUCCESS)
-    {
-        // Log the handle for diagnostics
-        MSI_LOG_OPEN_HANDLE(hMsiView);
+    // Some tables are not always in the list of tables. Check them hardcoded
+    LoadTableNameIfExists(_T("_ForceCodePage"));
+    LoadTableNameIfExists(_T("_Streams"));
 
-        // Insert the table to the table list
-        if(!FindStringInList(m_TableNames, _T("_Streams")))
-            m_TableNames.push_back(_T("_Streams"));
-        MSI_CLOSE_HANDLE(hMsiView);
-    }
-
+    // Return success if there is at least one table
     return m_TableNames.size() ? ERROR_SUCCESS : ERROR_NO_MORE_ITEMS;
 }
 
@@ -324,7 +339,31 @@ DWORD TMsiDatabase::LoadFiles()
 {
     PLIST_ENTRY pHeadEntry = &m_Tables;
     PLIST_ENTRY pListEntry;
+    MSIHANDLE hMsiSummary = NULL;
+    UINT nPropertyCount = 0;
 
+    // Load the summary information
+    if(MsiGetSummaryInformation(m_hMsiDb, NULL, 0, &hMsiSummary) == ERROR_SUCCESS)
+    {
+        // Log the handle for diagnostics
+        MSI_LOG_OPEN_HANDLE(hMsiSummary);
+
+        // Get the number of items
+        if(MsiSummaryInfoGetPropertyCount(hMsiSummary, &nPropertyCount) == ERROR_SUCCESS)
+        {
+            if(LoadSummaryFile(hMsiSummary) == ERROR_SUCCESS)
+            {
+                hMsiSummary = NULL;
+            }
+        }
+
+        if(hMsiSummary != NULL)
+        {
+            MSI_CLOSE_HANDLE(hMsiSummary);
+        }
+    }
+
+    // Load the tables
     for(pListEntry = pHeadEntry->Flink; pListEntry != pHeadEntry; pListEntry = pListEntry->Flink)
     {
         TMsiTable * pMsiTable = CONTAINING_RECORD(pListEntry, TMsiTable, m_Entry);
@@ -393,6 +432,26 @@ DWORD TMsiDatabase::LoadSimpleCsvFile(TMsiTable * pMsiTable)
         {
             InsertTailList(&m_Files, &pMsiFile->m_Entry);
             InterlockedIncrement((LONG *)(&m_dwFiles));
+        }
+        else
+        {
+            pMsiFile->Release();
+        }
+    }
+    return dwErrCode;
+}
+
+DWORD TMsiDatabase::LoadSummaryFile(MSIHANDLE hMsiSummary)
+{
+    TMsiFile* pMsiFile;
+    DWORD dwErrCode = ERROR_NOT_ENOUGH_MEMORY;
+
+    if((pMsiFile = new TMsiFile(NULL)) != NULL)
+    {
+        if((dwErrCode = pMsiFile->SetSummaryFile(this, hMsiSummary)) == ERROR_SUCCESS)
+        {
+            InsertTailList(&m_Files, &pMsiFile->m_Entry);
+            InterlockedIncrement((LONG*)(&m_dwFiles));
         }
         else
         {

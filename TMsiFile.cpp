@@ -11,6 +11,41 @@
 #include "wcx_msi.h"
 
 //-----------------------------------------------------------------------------
+// MSI Summary info data types
+
+struct MSI_PROPERTY
+{
+    VARENUM vType;
+    LPCTSTR szName;
+};
+
+static const MSI_PROPERTY MsiPropertyList[] = 
+{
+    {VT_EMPTY},
+    {VT_I2,       _T("Codepage")},
+    {VT_LPSTR,    _T("Title")},
+    {VT_LPSTR,    _T("Subject")},
+    {VT_LPSTR,    _T("Author")},
+    {VT_LPSTR,    _T("Keywords")},
+    {VT_LPSTR,    _T("Comments")},
+    {VT_LPSTR,    _T("Template")},
+    {VT_LPSTR,    _T("Last Saved By")},
+    {VT_LPSTR,    _T("Revision Number")},
+    {VT_EMPTY},
+    {VT_FILETIME, _T("Last Printed")},
+    {VT_FILETIME, _T("Create Time / Date")},
+    {VT_FILETIME, _T("Last Save Time / Date")},
+    {VT_I4,       _T("Page Count")},
+    {VT_I4,       _T("Word Count")},
+    {VT_I4,       _T("Character Count")},
+    {VT_EMPTY},
+    {VT_LPSTR,    _T("Creating Application")},
+    {VT_I4,       _T("Security")}
+};
+
+static LPCTSTR szCsvExtension = _T(".csv");
+
+//-----------------------------------------------------------------------------
 // Non-class members
 
 static LPBYTE AppendNewLine(LPBYTE pbBufferPtr, LPBYTE pbBufferEnd)
@@ -66,14 +101,46 @@ static LPBYTE AppendFieldString(LPBYTE pbBufferPtr, LPBYTE pbBufferEnd, const st
     return pbBufferPtr;
 }
 
+HRESULT StringCchPrintfFT(LPTSTR szBuffer, size_t ccBuffer, const FILETIME & ft)
+{
+    SYSTEMTIME st;
+    LPTSTR szBufferEnd = szBuffer + ccBuffer;
+    LPTSTR szBufferPtr = szBuffer;
+    int nLength;
+
+    // If the filetime is not present, do nothing
+    if(ft.dwHighDateTime && ft.dwHighDateTime)
+    {
+        // Convert the file time to SYSTEMTIME
+        FileTimeToSystemTime(&ft, &st);
+
+        // Create date
+        nLength = GetDateFormat(LOCALE_USER_DEFAULT, DATE_SHORTDATE, &st, NULL, szBufferPtr, (int)(szBufferEnd - szBufferPtr));
+        if(nLength != 0)
+        {
+            szBufferPtr += (nLength - 1);
+            *szBufferPtr++ = _T(' ');
+        }
+
+        // Create time
+        GetTimeFormat(LOCALE_USER_DEFAULT, TIME_FORCE24HOURFORMAT, &st, NULL, szBufferPtr, (int)(szBufferEnd - szBufferPtr));
+    }
+    else
+    {
+        StringCchCopy(szBuffer, ccBuffer, _T("N/A"));
+    }
+    return S_OK;
+}
+
 //-----------------------------------------------------------------------------
 // TMsiFile functions
 
 TMsiFile::TMsiFile(TMsiTable * pMsiTable)
 {
     InitializeListHead(&m_Entry);
-    m_hMsiRecord = NULL;
+    m_hMsiHandle = NULL;
     m_dwFileSize = 0;
+    m_FileType = MsiFileNone;
     m_dwRefs = 1;
 
     // Reset the referenced file
@@ -101,10 +168,10 @@ TMsiFile::~TMsiFile()
         m_pMsiTable->Release();
     m_pMsiTable = NULL;
 
-    // Close the MSI record handle
-    if(m_hMsiRecord != NULL)
-        MSI_CLOSE_HANDLE(m_hMsiRecord);
-    m_hMsiRecord = NULL;
+    // Close the MSI handle, if any
+    if(m_hMsiHandle != NULL)
+        MSI_CLOSE_HANDLE(m_hMsiHandle);
+    m_hMsiHandle = NULL;
 }
 
 //-----------------------------------------------------------------------------
@@ -125,12 +192,21 @@ DWORD TMsiFile::Release()
     return m_dwRefs;
 }
 
+DWORD TMsiFile::SetSummaryFile(TMsiDatabase * pMsiDb, MSIHANDLE hMsiSummary)
+{
+    // Remember the summary info
+    m_FileType = MsiFileSummary;
+    m_hMsiHandle = hMsiSummary;
+
+    // Ensure that we have an unique file name
+    return SetUniqueFileName(pMsiDb, NULL, _T("_SummaryInformation"), szCsvExtension);
+}
+
 DWORD TMsiFile::SetBinaryFile(TMsiDatabase * pMsiDb, MSIHANDLE hMsiRecord)
 {
     TMsiFile * pRefFile;
     std::tstring strItemName;
     LPTSTR szExtension;
-    DWORD dwNameIndex = 1;
     TCHAR szFileName[MAX_PATH];
     TCHAR szBaseName[MAX_PATH];
     TCHAR szFileExt[MAX_PATH] = {0};
@@ -153,45 +229,131 @@ DWORD TMsiFile::SetBinaryFile(TMsiDatabase * pMsiDb, MSIHANDLE hMsiRecord)
                 szExtension[0] = 0;
             }
 
-            // Construct the unique file name
-            StringCchPrintf(szFileName, _countof(szFileName), _T("%s\\%s%s"), m_pMsiTable->Name(), szBaseName, szFileExt);
-            while(pMsiDb->IsFilePresent(szFileName))
-            {
-                StringCchPrintf(szFileName, _countof(szFileName), _T("%s\\%s_%03u%s"), m_pMsiTable->Name(), szBaseName, dwNameIndex++, szFileExt);
-            }
+            // Setup the unique file name
+            SetUniqueFileName(pMsiDb, m_pMsiTable->Name(), szBaseName, szFileExt);
         }
         else
         {
-            // Reference the file only
+            m_strName.assign(szFileName);
             m_pRefFile->AddRef();
         }
 
         // Assign the file name and record handle
-        m_strName.assign(szFileName);
-        m_hMsiRecord = hMsiRecord;
+        m_FileType = MsiFileBinary;
+        m_hMsiHandle = hMsiRecord;
         return ERROR_SUCCESS;
     }
-
-    // Store the MSI record handle
     return ERROR_NOT_SUPPORTED;
 }
 
 DWORD TMsiFile::SetCsvFile(TMsiDatabase * pMsiDb)
 {
-    DWORD dwNameIndex = 1; 
-    TCHAR szFileName[MAX_PATH];
+    // Setup the handle
+    m_FileType = MsiFileTable;
+    m_hMsiHandle = NULL;
 
-    // Construct the default file name
-    StringCchPrintf(szFileName, _countof(szFileName), _T("%s.csv"), m_pMsiTable->Name());
-
-    // We need to verify whether the file is in the database already
-    while(pMsiDb->IsFilePresent(szFileName))
-        StringCchPrintf(szFileName, _countof(szFileName), _T("%s_%03u.csv"), m_pMsiTable->Name(), dwNameIndex++);
-    m_strName.assign(szFileName);
-    return ERROR_SUCCESS;
+    // Generate unique file name
+    return SetUniqueFileName(pMsiDb, NULL, m_pMsiTable->Name(), szCsvExtension);
 }
 
-DWORD TMsiFile::LoadCsvFileData(LPDWORD PtrFileSize)
+DWORD TMsiFile::LoadSummaryFile(LPDWORD PtrFileSize)
+{
+    std::tstring strValue;
+    LPBYTE pbBufferBegin = m_Data.pbData;
+    LPBYTE pbBufferPtr = m_Data.pbData;
+    LPBYTE pbBufferEnd = m_Data.pbData + m_Data.cbData;
+    DWORD dwErrCode = ERROR_SUCCESS;
+    UINT nPropertyCount = 0;
+
+    // Append the UTF-8 marker and table header
+    pbBufferPtr = AppendUtf8Marker(pbBufferPtr, pbBufferEnd);
+    pbBufferPtr = AppendFieldString(pbBufferPtr, pbBufferEnd, _T("Name"), 0);
+    pbBufferPtr = AppendFieldString(pbBufferPtr, pbBufferEnd, _T("Value"), 1);
+    pbBufferPtr = AppendNewLine(pbBufferPtr, pbBufferEnd);
+
+    // Read each field and store it tot he CSV file
+    if(MsiSummaryInfoGetPropertyCount(m_hMsiHandle, &nPropertyCount) == ERROR_SUCCESS)
+    {
+        for(UINT i = 0; i < _countof(MsiPropertyList); i++)
+        {
+            FILETIME ft = {0};
+            UINT uDataType = 0;
+            INT iValue = 0;
+            TCHAR szValue[1024] = {0};
+            DWORD ccValue = _countof(szValue);
+
+            if(MsiSummaryInfoGetProperty(m_hMsiHandle, i, &uDataType, &iValue, &ft, szValue, &ccValue) == ERROR_SUCCESS)
+            {
+                VARENUM vType = (VARENUM)(uDataType);
+                bool bUnknownFormat = false;
+
+                if(vType != VT_EMPTY)
+                {
+                    // Format the data type
+                    switch(vType)
+                    {
+                        case VT_I2:
+                        case VT_I4:
+                            StringCchPrintf(szValue, _countof(szValue), _T("%i"), iValue);
+                            break;
+
+                        case VT_FILETIME:
+                            StringCchPrintfFT(szValue, _countof(szValue), ft);
+                            break;
+
+                        case VT_LPSTR:
+                            // Already there
+                            break;
+
+                        default:
+                            bUnknownFormat = true;
+                            assert(false);
+                            break;
+                    }
+
+                    // Did we retrieve the format?
+                    if(bUnknownFormat == false)
+                    {
+                        // Append name and value
+                        pbBufferPtr = AppendFieldString(pbBufferPtr, pbBufferEnd, MsiPropertyList[i].szName, 0);
+                        pbBufferPtr = AppendFieldString(pbBufferPtr, pbBufferEnd, szValue, 1);
+                        pbBufferPtr = AppendNewLine(pbBufferPtr, pbBufferEnd);
+                    }
+                }
+            }
+        }
+    }
+
+    // Give the file size to the caller
+    if(dwErrCode == ERROR_SUCCESS)
+        PtrFileSize[0] = (DWORD)(pbBufferPtr - pbBufferBegin);
+    return dwErrCode;
+}
+
+DWORD TMsiFile::LoadBinaryFile(LPDWORD PtrFileSize)
+{
+    DWORD dwFileSize = 0;
+    DWORD dwErrCode;
+
+    // "Load file data" mode?
+    if(m_Data.pbData != NULL)
+    {
+        dwFileSize = m_dwFileSize;
+        dwErrCode = MsiRecordReadStream(m_hMsiHandle, (UINT)(m_pMsiTable->m_nStreamColumn + 1), (char *)(m_Data.pbData), &dwFileSize);
+    }
+    else
+    {
+        dwFileSize = MsiRecordDataSize(m_hMsiHandle, (UINT)(m_pMsiTable->m_nStreamColumn + 1));
+        dwErrCode = ERROR_SUCCESS;
+    }
+
+    // Give the file size to the caller
+    if(dwErrCode == ERROR_SUCCESS)
+        PtrFileSize[0] = dwFileSize;
+    return dwErrCode;
+}
+
+DWORD TMsiFile::LoadCsvFile(LPDWORD PtrFileSize)
 {
     const std::vector<TMsiColumn> & Columns = m_pMsiTable->Columns();
     std::tstring strValue;
@@ -230,12 +392,12 @@ DWORD TMsiFile::LoadCsvFileData(LPDWORD PtrFileSize)
                 switch(Columns[i].m_Type)
                 {
                     case MsiTypeInteger:
-                        MsiRecordGetInteger(hMsiRecord, (UINT)(i + 1), strValue);
+                        MsiRecordGetInteger(hMsiRecord, (UINT)(i), strValue);
                         pbBufferPtr = AppendFieldString(pbBufferPtr, pbBufferEnd, strValue, i);
                         break;
 
                     case MsiTypeString:
-                        MsiRecordGetString(hMsiRecord, (UINT)(i + 1), strValue);
+                        MsiRecordGetString(hMsiRecord, (UINT)(i), strValue);
                         pbBufferPtr = AppendFieldString(pbBufferPtr, pbBufferEnd, strValue, i);
                         break;
 
@@ -257,28 +419,51 @@ DWORD TMsiFile::LoadCsvFileData(LPDWORD PtrFileSize)
         MsiViewClose(hMsiView);
     }
 
-    // Give the file size to the called
-    if(PtrFileSize != NULL)
+    // Give the file size to the caller
+    if(dwErrCode == ERROR_SUCCESS)
         PtrFileSize[0] = (DWORD)(pbBufferPtr - pbBufferBegin);
     return dwErrCode;
 }
 
-DWORD TMsiFile::LoadFileSize()
+DWORD TMsiFile::LoadFileInternal(LPDWORD PtrFileSize)
 {
+    DWORD dwFileSize = 0;
+    DWORD dwErrCode = ERROR_NOT_SUPPORTED;
+
     // Is there a referenced file?
     if(m_pRefFile != NULL)
-        return m_pRefFile->LoadFileSize();
+        return m_pRefFile->LoadFileInternal(PtrFileSize);
 
-    // Is there a MSI record with the stream? 
-    if(m_hMsiRecord != NULL)
+    // File-type-specific
+    switch(m_FileType)
     {
-        m_dwFileSize = MsiRecordDataSize(m_hMsiRecord, (UINT)(m_pMsiTable->m_nStreamColumn + 1));
-        return ERROR_SUCCESS;
+        case MsiFileSummary:
+            dwErrCode = LoadSummaryFile(&dwFileSize);
+            break;
+
+        case MsiFileBinary:
+            dwErrCode = LoadBinaryFile(&dwFileSize);
+            break;
+
+        case MsiFileTable:
+            dwErrCode = LoadCsvFile(&dwFileSize);
+            break;
+
+        default:
+            dwErrCode = ERROR_NOT_SUPPORTED;
+            assert(false);
+            break;
     }
-    else
+
+    // Give the file size to the caller
+    if(dwErrCode == ERROR_SUCCESS)
     {
-        return LoadCsvFileData(&m_dwFileSize);
+        if(PtrFileSize != NULL)
+            PtrFileSize[0] = dwFileSize;
+        else
+            m_dwFileSize = dwFileSize;
     }
+    return dwErrCode;
 }
 
 DWORD TMsiFile::LoadFileData()
@@ -294,18 +479,9 @@ DWORD TMsiFile::LoadFileData()
     {
         if((dwErrCode = m_Data.Reserve(m_dwFileSize)) == ERROR_SUCCESS)
         {
-            // 1) Stream-based files: Read the stream data all at once
-            if(m_hMsiRecord != NULL)
-            {
-                dwErrCode = MsiRecordReadStream(m_hMsiRecord, (UINT)(m_pMsiTable->m_nStreamColumn + 1), (char *)(m_Data.pbData), &m_Data.cbData);
-            }
-            else
-            {
-                dwErrCode = LoadCsvFileData(&m_Data.cbData);
-            }
+            dwErrCode = LoadFileInternal(&m_Data.cbData);
         }
     }
-
     return dwErrCode;
 }
 
@@ -333,4 +509,31 @@ DWORD TMsiFile::FileSize()
 LPCTSTR TMsiFile::Name()
 {
     return m_strName.c_str();
+}
+
+DWORD TMsiFile::SetUniqueFileName(TMsiDatabase * pMsiDb, LPCTSTR szFolderName, LPCTSTR szBaseName, LPCTSTR szExtension)
+{
+    LPTSTR szFileNameEnd;
+    LPTSTR szFileNamePtr;
+    TCHAR szFileName[MAX_PATH];
+    DWORD dwNameIndex = 1;
+
+    // Setup the range
+    szFileNameEnd = szFileName + _countof(szFileName);
+    szFileNamePtr = szFileName;
+
+    // If we have directory, append it first
+    if(szFolderName && szFolderName[0])
+    {
+        StringCchPrintfEx(szFileNamePtr, (szFileNameEnd - szFileNamePtr), &szFileNamePtr, NULL, 0, _T("%s\\"), szFolderName);
+    }
+
+    // Construct the file name without numeric prefix
+    StringCchPrintf(szFileNamePtr, (szFileNameEnd - szFileNamePtr), _T("%s%s"), szBaseName, szExtension);
+    while(pMsiDb->IsFilePresent(szFileName))
+        StringCchPrintf(szFileName, _countof(szFileName), _T("%s_%03u%s"), szBaseName, dwNameIndex++, szExtension);
+
+    // Assign the file name to the string
+    m_strName.assign(szFileName);
+    return ERROR_SUCCESS;
 }
