@@ -1,4 +1,4 @@
-* MSI plugin for Total Commander *
+* PDF plugin for Total Commander *
 
 What is a MSI ?
 ---------------
@@ -22,12 +22,12 @@ How to instal this plugin
 
 How to instal this plugin (the old way)
 ---------------------------------------
-1. Create a folder under Total Commander plugins (TotalCmd\plugins\wcx\msi)
+1. Create a folder under Total Commander plugins (TotalCmd\plugins\wcx\pdf)
 2. Unpack the content of wcx_msi.zip to that folder
 3. In Total Commander, go to Configuration / Options ... / Plugins / Packer Plugins / Configure
 4. Into the "All files with extension (ending with)" combo box, type "msi"
 5. Into the "Associate with" edit box, type the full path of the plugin
-   (C:\Program Files\Totalcmd\plugins\wcx\msi\msi.wcx)
+   (C:\Program Files\Totalcmd\plugins\wcx\pdf\pdf.wcx)
 6. Confirm by clicking "OK".
 7. The plugin should now be fully operational. Try it by locating a MSI file
    and double-clicking it in Total Commander
@@ -35,15 +35,15 @@ How to instal this plugin (the old way)
 
 Files in the pack
 -----------------
-* msi.wcx      - 32-bit Total Commander plugin
-* msi.wcx64    - 64-bit Total Commander plugin
+* pdf.wcx      - 32-bit Total Commander plugin
+* pdf.wcx64    - 64-bit Total Commander plugin
 * pluginst.inf - This file is recognized by Total Commander
 * readme.txt   - This text file
 
 
  Authors
  -------
- The MSI plugin has been derived written by Ladik (http://www.zezula.net).
+ The PDF plugin has been derived written by Ladik (http://www.zezula.net).
  Send any comments, suggestions and/or critics to zezula@volny.cz.
 
  Ladik

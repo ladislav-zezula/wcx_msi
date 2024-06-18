@@ -166,7 +166,7 @@ struct THeaderDataExW
     DWORD CmtState;
     char Reserved[1024];
 };
-#pragma pack(pop, 4)
+#pragma pack(pop)
 
 //-----------------------------------------------------------------------------
 // Open archive information
