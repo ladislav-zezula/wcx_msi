@@ -11,8 +11,6 @@
 #include "wcx_msi.h"                    // Our functions
 #include "resource.h"                   // Resource symbols
 
-#include "TStringConvert.inl"            // Conversion functions
-
 #pragma comment(lib, "Msi.lib")
 
 //-----------------------------------------------------------------------------
@@ -306,7 +304,7 @@ static void StoreFoundFile(TMsiFile * pMsiFile, HDR * pHeaderData, DOS_FTIME & f
     // Store the file time
     pHeaderData->FileTime = fileTime;
 
-    // TODO: Store the file sizes
+    // Store the file sizes
     pHeaderData->PackSize = pMsiFile->FileSize();
     pHeaderData->UnpSize = pMsiFile->FileSize();
 

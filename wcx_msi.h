@@ -23,7 +23,8 @@
 #include <string>
 #include <vector>
 
-#include "utils.h"                              // Utility functions
+#include "Utils.h"                              // Utility functions
+#include "TStringConvert.h"                     // String convertion functions
 #include "TMsi.h"                               // MSI classes
 
 //-----------------------------------------------------------------------------
