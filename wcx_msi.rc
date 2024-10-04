@@ -61,8 +61,8 @@ LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,0,9
- PRODUCTVERSION 1,0,0,9
+ FILEVERSION 1,0,0,10
+ PRODUCTVERSION 1,0,0,10
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -80,13 +80,13 @@ BEGIN
             VALUE "Comments", "MSI plugin for Total Commander"
             VALUE "CompanyName", "Ladislav Zezula"
             VALUE "FileDescription", "wcx_msi"
-            VALUE "FileVersion", "1, 0, 0, 9\0"
+            VALUE "FileVersion", "1, 0, 0, 10\0"
             VALUE "InternalName", "wcx_msi"
             VALUE "LegalCopyright", "Copyright (c) 2023 Ladislav Zezula"
             VALUE "LegalTrademarks", "http://www.zezula.net"
             VALUE "OriginalFilename", "wcx_msi.dll"
             VALUE "ProductName", "wcx_msi"
-            VALUE "ProductVersion", "1, 0, 0, 9\0"
+            VALUE "ProductVersion", "1, 0, 0, 10\0"
         END
     END
     BLOCK "VarFileInfo"

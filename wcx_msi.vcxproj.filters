@@ -38,12 +38,6 @@
     <None Include="wcx_msi.def">
       <Filter>Source Files</Filter>
     </None>
-    <None Include="Res\Cursor1.cur">
-      <Filter>Resource Files</Filter>
-    </None>
-    <None Include="Res\Cursor2.cur">
-      <Filter>Resource Files</Filter>
-    </None>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="wcx_msi.rc">
@@ -62,7 +56,7 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="Readme.txt">
+    <Text Include="res\readme.txt">
       <Filter>Resource Files</Filter>
     </Text>
   </ItemGroup>

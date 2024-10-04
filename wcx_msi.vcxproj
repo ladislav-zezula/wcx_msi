@@ -331,8 +331,6 @@
     <ClCompile Include="wcx_msi.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="Res\Cursor1.cur" />
-    <None Include="Res\Cursor2.cur" />
     <None Include="wcx_msi.def" />
   </ItemGroup>
   <ItemGroup>
@@ -344,7 +342,7 @@
     <ClInclude Include="wcx_msi.h" />
   </ItemGroup>
   <ItemGroup>
-    <Text Include="Readme.txt" />
+    <Text Include="res\readme.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
